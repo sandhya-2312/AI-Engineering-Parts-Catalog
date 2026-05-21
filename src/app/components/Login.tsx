@@ -1,38 +1,59 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Eye, EyeOff, Layers, Lock, Mail } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { AppLogo } from './AppLogo';
+import { useAuth, isApiError } from '../context/AuthContext';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login, isAuthenticated, isLoading } = useAuth();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const from = (location.state as { from?: string } | null)?.from ?? '/dashboard';
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate(from, { replace: true });
+    }
+  }, [isAuthenticated, isLoading, navigate, from]);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    navigate('/dashboard');
+    setError('');
+    setIsSubmitting(true);
+    try {
+      await login(email.trim(), password, rememberMe);
+      navigate(from, { replace: true });
+    } catch (err) {
+      setError(isApiError(err) ? err.message : 'Unable to sign in. Check your credentials.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-background via-background to-primary/5 relative overflow-hidden">
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--engineering-grid)_1px,transparent_1px),linear-gradient(to_bottom,var(--engineering-grid)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_0%,#000_70%,transparent_110%)]" />
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
 
+  return (
+    <div className="min-h-screen w-full bg-white relative overflow-hidden">
       <div className="relative z-10 flex min-h-screen items-center justify-center p-4">
         <div className="w-full max-w-6xl grid lg:grid-cols-2 gap-8 items-center">
           <div className="hidden lg:flex flex-col justify-center space-y-6 p-8">
             <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="p-3 rounded-lg bg-primary/10 backdrop-blur-sm border border-primary/20">
-                  <Layers className="w-8 h-8 text-primary" />
-                </div>
-                <div>
-                  <h1 className="text-3xl tracking-tight text-foreground">EngineerX</h1>
-                  <p className="text-sm text-muted-foreground">AI-Powered Parts Catalog</p>
-                </div>
-              </div>
+              <AppLogo className="h-20" />
 
               <div className="space-y-3 pt-6">
                 <h2 className="text-4xl tracking-tight text-foreground">Industrial Engineering Excellence</h2>
@@ -53,14 +74,8 @@ export default function Login() {
 
           <div className="w-full max-w-md mx-auto">
             <div className="rounded-xl bg-card/80 backdrop-blur-xl border border-border shadow-2xl p-8 space-y-6">
-              <div className="lg:hidden flex items-center gap-3 justify-center pb-4">
-                <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
-                  <Layers className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <h1 className="text-2xl tracking-tight">EngineerX</h1>
-                  <p className="text-xs text-muted-foreground">AI Parts Catalog</p>
-                </div>
+              <div className="lg:hidden flex justify-center pb-4">
+                <AppLogo className="h-14" />
               </div>
 
               <div className="space-y-2 text-center lg:text-left">
@@ -71,6 +86,12 @@ export default function Login() {
               </div>
 
               <form onSubmit={handleLogin} className="space-y-4">
+                {error && (
+                  <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
+                    {error}
+                  </p>
+                )}
+
                 <div className="space-y-2">
                   <label htmlFor="email" className="text-sm text-foreground">
                     Email Address
@@ -80,11 +101,12 @@ export default function Login() {
                     <Input
                       id="email"
                       type="email"
-                      placeholder="engineer@company.com"
+                      placeholder="admin@engineerx.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="pl-10"
                       required
+                      autoComplete="email"
                     />
                   </div>
                 </div>
@@ -103,6 +125,7 @@ export default function Login() {
                       onChange={(e) => setPassword(e.target.value)}
                       className="pl-10 pr-10"
                       required
+                      autoComplete="current-password"
                     />
                     <button
                       type="button"
@@ -132,20 +155,15 @@ export default function Login() {
                       Remember me
                     </label>
                   </div>
-                  <button type="button" className="text-sm text-primary hover:underline">
-                    Forgot password?
-                  </button>
                 </div>
 
-                <Button type="submit" className="w-full">
-                  Sign In
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  {isSubmitting ? 'Signing in…' : 'Sign In'}
                 </Button>
 
                 <div className="text-center text-sm text-muted-foreground">
                   Need access?{' '}
-                  <button type="button" className="text-primary hover:underline">
-                    Contact Administrator
-                  </button>
+                  <span className="text-primary">Contact your administrator</span>
                 </div>
               </form>
             </div>

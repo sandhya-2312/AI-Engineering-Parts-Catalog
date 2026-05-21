@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -21,9 +21,14 @@ import {
   Shield,
   Palette,
   Save,
-  Camera,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { cn } from './ui/utils';
+import { isApiError, roleLabel, useAuth } from '../context/AuthContext';
+import { authApi } from '../lib/api/auth';
+import { SETTINGS_STORAGE_KEY, notifyProfileUpdated } from '../lib/profile';
+import { ProfileAvatar } from './ProfileAvatar';
 
 const settingsSections = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -35,6 +40,110 @@ const settingsSections = [
 ] as const;
 
 type SectionId = (typeof settingsSections)[number]['id'];
+
+type SettingsData = {
+  profile: {
+    name: string;
+    email: string;
+    role: string;
+    jobTitle: string;
+    department: string;
+    photoUrl?: string;
+  };
+  catalog: {
+    itemsPerPage: string;
+    unitSystem: string;
+    defaultView: string;
+    showThumbnails: boolean;
+    showPartNumbers: boolean;
+    enableARPreview: boolean;
+  };
+  notifications: {
+    newParts: boolean;
+    exportComplete: boolean;
+    catalogUpdates: boolean;
+    weeklyDigest: boolean;
+    teamActivity: boolean;
+    emailAlerts: boolean;
+  };
+  exportDefaults: {
+    includeImages: boolean;
+    includeSpecs: boolean;
+    includeDrawings: boolean;
+    includePricing: boolean;
+    paperSize: string;
+    orientation: string;
+  };
+  appearance: {
+    theme: string;
+    compactMode: boolean;
+    showAnimations: boolean;
+    accentColor: string;
+  };
+};
+
+function getBaseSettings(displayName: string, email: string, role: string): SettingsData {
+  return {
+    profile: {
+      name: displayName,
+      email,
+      role,
+      jobTitle: '',
+      department: 'Engineering',
+      photoUrl: '',
+    },
+    catalog: {
+      itemsPerPage: '10',
+      unitSystem: 'metric',
+      defaultView: 'grid',
+      showThumbnails: true,
+      showPartNumbers: true,
+      enableARPreview: true,
+    },
+    notifications: {
+      newParts: true,
+      exportComplete: true,
+      catalogUpdates: false,
+      weeklyDigest: true,
+      teamActivity: false,
+      emailAlerts: true,
+    },
+    exportDefaults: {
+      includeImages: true,
+      includeSpecs: true,
+      includeDrawings: false,
+      includePricing: false,
+      paperSize: 'a4',
+      orientation: 'portrait',
+    },
+    appearance: {
+      theme: 'dark',
+      compactMode: false,
+      showAnimations: true,
+      accentColor: 'cyan',
+    },
+  };
+}
+
+function readStoredSettings(): Partial<SettingsData> | null {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as Partial<SettingsData>;
+  } catch {
+    return null;
+  }
+}
+
+function mergeSettings(base: SettingsData, stored: Partial<SettingsData> | null): SettingsData {
+  return {
+    profile: { ...base.profile, ...(stored?.profile ?? {}) },
+    catalog: { ...base.catalog, ...(stored?.catalog ?? {}) },
+    notifications: { ...base.notifications, ...(stored?.notifications ?? {}) },
+    exportDefaults: { ...base.exportDefaults, ...(stored?.exportDefaults ?? {}) },
+    appearance: { ...base.appearance, ...(stored?.appearance ?? {}) },
+  };
+}
 
 function SettingRow({
   label,
@@ -59,53 +168,183 @@ function SettingRow({
 }
 
 export default function Settings() {
+  const { user, changePassword, refreshProfile } = useAuth();
   const [activeSection, setActiveSection] = useState<SectionId>('profile');
-  const [saved, setSaved] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [isEnabling2FA, setIsEnabling2FA] = useState(false);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
 
-  const [profile, setProfile] = useState({
-    name: 'John Engineer',
-    email: 'john.engineer@engineerx.com',
-    role: 'Senior Engineer',
-    department: 'Mechanical Design',
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const userName = user?.fullName?.trim() || user?.email || 'Engineer User';
+  const userEmail = user?.email ?? '';
+  const userRole = user ? roleLabel(user.role) : 'Engineer';
+
+  const [settings, setSettings] = useState<SettingsData>(() => {
+    const base = getBaseSettings(userName, userEmail, userRole);
+    return mergeSettings(base, readStoredSettings());
   });
+  const [lastSavedSettings, setLastSavedSettings] = useState<SettingsData>(() => settings);
 
-  const [catalog, setCatalog] = useState({
-    itemsPerPage: '10',
-    unitSystem: 'metric',
-    defaultView: 'grid',
-    showThumbnails: true,
-    showPartNumbers: true,
-    enableARPreview: true,
-  });
+  useEffect(() => {
+    const base = getBaseSettings(userName, userEmail, userRole);
+    const merged = mergeSettings(base, readStoredSettings());
+    setSettings(merged);
+    setLastSavedSettings(merged);
+  }, [userName, userEmail, userRole]);
 
-  const [notifications, setNotifications] = useState({
-    newParts: true,
-    exportComplete: true,
-    catalogUpdates: false,
-    weeklyDigest: true,
-    teamActivity: false,
-    emailAlerts: true,
-  });
+  useEffect(() => {
+    let mounted = true;
+    const loadSettings = async () => {
+      setIsLoadingSettings(true);
+      try {
+        const data = await authApi.getSettings();
+        if (!mounted) return;
+        const base = getBaseSettings(userName, userEmail, userRole);
+        const merged = mergeSettings(base, {
+          profile: {
+            name: data.profile.name,
+            email: data.profile.email,
+            role: data.profile.role,
+            jobTitle: data.profile.jobTitle,
+            department: data.profile.department,
+            photoUrl: data.profile.photoUrl ?? '',
+          },
+          catalog: data.catalog as SettingsData['catalog'],
+          notifications: data.notifications as SettingsData['notifications'],
+          exportDefaults: data.exportDefaults as SettingsData['exportDefaults'],
+          appearance: data.appearance as SettingsData['appearance'],
+        });
+        setSettings(merged);
+        setLastSavedSettings(merged);
+      } catch {
+        // Keep local fallback settings if endpoint unavailable.
+      } finally {
+        if (mounted) setIsLoadingSettings(false);
+      }
+    };
 
-  const [exportDefaults, setExportDefaults] = useState({
-    includeImages: true,
-    includeSpecs: true,
-    includeDrawings: false,
-    includePricing: false,
-    paperSize: 'a4',
-    orientation: 'portrait',
-  });
+    loadSettings();
+    return () => {
+      mounted = false;
+    };
+  }, [userName, userEmail, userRole]);
 
-  const [appearance, setAppearance] = useState({
-    theme: 'dark',
-    compactMode: false,
-    showAnimations: true,
-    accentColor: 'cyan',
-  });
+  const hasUnsavedChanges = useMemo(
+    () => JSON.stringify(settings) !== JSON.stringify(lastSavedSettings),
+    [settings, lastSavedSettings],
+  );
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const profile = settings.profile;
+  const catalog = settings.catalog;
+  const notifications = settings.notifications;
+  const exportDefaults = settings.exportDefaults;
+  const appearance = settings.appearance;
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await authApi.updateSettings({
+        profile: {
+          name: settings.profile.name,
+          email: settings.profile.email,
+          role: settings.profile.role,
+          jobTitle: settings.profile.jobTitle,
+          department: settings.profile.department,
+          photoUrl: settings.profile.photoUrl ?? '',
+        },
+        catalog: settings.catalog,
+        notifications: settings.notifications,
+        exportDefaults: settings.exportDefaults,
+        appearance: settings.appearance,
+      });
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+      setLastSavedSettings(settings);
+      setSaveMessage('Settings saved successfully.');
+      await refreshProfile();
+      notifyProfileUpdated();
+    } catch {
+      setSaveMessage('Unable to save settings right now.');
+    } finally {
+      setIsSaving(false);
+      window.setTimeout(() => setSaveMessage(''), 2500);
+    }
+  };
+
+  const handlePhotoUpdated = (photoUrl: string) => {
+    setSettings((prev) => ({
+      ...prev,
+      profile: { ...prev.profile, photoUrl },
+    }));
+    setSaveMessage('Profile photo updated.');
+    window.setTimeout(() => setSaveMessage(''), 2500);
+  };
+
+  const handleEnable2FA = async () => {
+    setIsEnabling2FA(true);
+    try {
+      const result = await authApi.enableTwoFactor();
+      setSaveMessage(result.message);
+    } catch (error) {
+      setSaveMessage(isApiError(error) ? error.message : 'Failed to enable two-factor authentication.');
+    } finally {
+      setIsEnabling2FA(false);
+      window.setTimeout(() => setSaveMessage(''), 2500);
+    }
+  };
+
+  const handleViewSessions = async () => {
+    setIsLoadingSessions(true);
+    try {
+      const sessions = await authApi.sessions();
+      const summary = sessions
+        .map((session) => `${session.isCurrent ? '[Current] ' : ''}${session.device} - ${session.lastActiveAt}`)
+        .join('\n');
+      window.alert(summary || 'No active sessions found.');
+    } catch (error) {
+      setSaveMessage(isApiError(error) ? error.message : 'Failed to load active sessions.');
+      window.setTimeout(() => setSaveMessage(''), 2500);
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New password and confirmation do not match.');
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordSuccess('Password updated successfully.');
+    } catch (error) {
+      setPasswordError(isApiError(error) ? error.message : 'Failed to update password.');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
   };
 
   return (
@@ -123,11 +362,16 @@ export default function Settings() {
                   </p>
                 </div>
               </div>
-              <Button onClick={handleSave} className="gap-2">
+              <Button
+                onClick={handleSave}
+                className="gap-2"
+                disabled={isSaving || isLoadingSettings || !hasUnsavedChanges}
+              >
                 <Save className="w-4 h-4" />
-                {saved ? 'Saved!' : 'Save Changes'}
+                {isSaving ? 'Saving...' : hasUnsavedChanges ? 'Save Changes' : 'Saved'}
               </Button>
             </div>
+            {saveMessage && <p className="text-sm text-muted-foreground">{saveMessage}</p>}
 
             <div className="flex flex-col lg:flex-row gap-6">
               <nav className="lg:w-56 shrink-0">
@@ -170,20 +414,18 @@ export default function Settings() {
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <div className="flex items-center gap-6">
-                        <div className="relative">
-                          <div className="w-20 h-20 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center">
-                            <User className="w-10 h-10 text-primary" />
-                          </div>
-                          <button className="absolute -bottom-1 -right-1 p-1.5 rounded-full bg-primary text-primary-foreground border-2 border-background hover:bg-primary/90 transition-colors">
-                            <Camera className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        <ProfileAvatar
+                          size="lg"
+                          name={profile.name}
+                          photoUrl={profile.photoUrl}
+                          onPhotoUpdated={handlePhotoUpdated}
+                        />
                         <div>
                           <p className="font-medium">{profile.name}</p>
-                          <p className="text-sm text-muted-foreground">{profile.role}</p>
-                          <Button variant="outline" size="sm" className="mt-2">
-                            Change Photo
-                          </Button>
+                          <p className="text-sm text-muted-foreground">
+                            {profile.jobTitle || profile.role}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{profile.email}</p>
                         </div>
                       </div>
 
@@ -196,7 +438,10 @@ export default function Settings() {
                             id="name"
                             value={profile.name}
                             onChange={(e) =>
-                              setProfile({ ...profile, name: e.target.value })
+                              setSettings((prev) => ({
+                                ...prev,
+                                profile: { ...prev.profile, name: e.target.value },
+                              }))
                             }
                           />
                         </div>
@@ -204,20 +449,20 @@ export default function Settings() {
                           <Label htmlFor="email">Email</Label>
                           <Input
                             id="email"
-                            type="email"
                             value={profile.email}
-                            onChange={(e) =>
-                              setProfile({ ...profile, email: e.target.value })
-                            }
+                            readOnly
                           />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="role">Job Title</Label>
                           <Input
                             id="role"
-                            value={profile.role}
+                            value={profile.jobTitle}
                             onChange={(e) =>
-                              setProfile({ ...profile, role: e.target.value })
+                              setSettings((prev) => ({
+                                ...prev,
+                                profile: { ...prev.profile, jobTitle: e.target.value },
+                              }))
                             }
                           />
                         </div>
@@ -227,7 +472,10 @@ export default function Settings() {
                             id="department"
                             value={profile.department}
                             onChange={(e) =>
-                              setProfile({ ...profile, department: e.target.value })
+                              setSettings((prev) => ({
+                                ...prev,
+                                profile: { ...prev.profile, department: e.target.value },
+                              }))
                             }
                           />
                         </div>
@@ -256,7 +504,10 @@ export default function Settings() {
                           <Select
                             value={catalog.itemsPerPage}
                             onValueChange={(v) =>
-                              setCatalog({ ...catalog, itemsPerPage: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                catalog: { ...prev.catalog, itemsPerPage: v },
+                              }))
                             }
                           >
                             <SelectTrigger className="w-32">
@@ -278,7 +529,10 @@ export default function Settings() {
                           <Select
                             value={catalog.unitSystem}
                             onValueChange={(v) =>
-                              setCatalog({ ...catalog, unitSystem: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                catalog: { ...prev.catalog, unitSystem: v },
+                              }))
                             }
                           >
                             <SelectTrigger className="w-36">
@@ -298,7 +552,10 @@ export default function Settings() {
                           <Select
                             value={catalog.defaultView}
                             onValueChange={(v) =>
-                              setCatalog({ ...catalog, defaultView: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                catalog: { ...prev.catalog, defaultView: v },
+                              }))
                             }
                           >
                             <SelectTrigger className="w-32">
@@ -319,7 +576,10 @@ export default function Settings() {
                           <Switch
                             checked={catalog.showThumbnails}
                             onCheckedChange={(v) =>
-                              setCatalog({ ...catalog, showThumbnails: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                catalog: { ...prev.catalog, showThumbnails: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -331,7 +591,10 @@ export default function Settings() {
                           <Switch
                             checked={catalog.showPartNumbers}
                             onCheckedChange={(v) =>
-                              setCatalog({ ...catalog, showPartNumbers: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                catalog: { ...prev.catalog, showPartNumbers: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -343,7 +606,10 @@ export default function Settings() {
                           <Switch
                             checked={catalog.enableARPreview}
                             onCheckedChange={(v) =>
-                              setCatalog({ ...catalog, enableARPreview: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                catalog: { ...prev.catalog, enableARPreview: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -372,7 +638,10 @@ export default function Settings() {
                           <Switch
                             checked={notifications.newParts}
                             onCheckedChange={(v) =>
-                              setNotifications({ ...notifications, newParts: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                notifications: { ...prev.notifications, newParts: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -384,7 +653,10 @@ export default function Settings() {
                           <Switch
                             checked={notifications.exportComplete}
                             onCheckedChange={(v) =>
-                              setNotifications({ ...notifications, exportComplete: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                notifications: { ...prev.notifications, exportComplete: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -396,7 +668,10 @@ export default function Settings() {
                           <Switch
                             checked={notifications.catalogUpdates}
                             onCheckedChange={(v) =>
-                              setNotifications({ ...notifications, catalogUpdates: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                notifications: { ...prev.notifications, catalogUpdates: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -408,7 +683,10 @@ export default function Settings() {
                           <Switch
                             checked={notifications.weeklyDigest}
                             onCheckedChange={(v) =>
-                              setNotifications({ ...notifications, weeklyDigest: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                notifications: { ...prev.notifications, weeklyDigest: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -420,7 +698,10 @@ export default function Settings() {
                           <Switch
                             checked={notifications.teamActivity}
                             onCheckedChange={(v) =>
-                              setNotifications({ ...notifications, teamActivity: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                notifications: { ...prev.notifications, teamActivity: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -432,7 +713,10 @@ export default function Settings() {
                           <Switch
                             checked={notifications.emailAlerts}
                             onCheckedChange={(v) =>
-                              setNotifications({ ...notifications, emailAlerts: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                notifications: { ...prev.notifications, emailAlerts: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -461,7 +745,10 @@ export default function Settings() {
                           <Switch
                             checked={exportDefaults.includeImages}
                             onCheckedChange={(v) =>
-                              setExportDefaults({ ...exportDefaults, includeImages: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                exportDefaults: { ...prev.exportDefaults, includeImages: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -473,7 +760,10 @@ export default function Settings() {
                           <Switch
                             checked={exportDefaults.includeSpecs}
                             onCheckedChange={(v) =>
-                              setExportDefaults({ ...exportDefaults, includeSpecs: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                exportDefaults: { ...prev.exportDefaults, includeSpecs: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -485,7 +775,10 @@ export default function Settings() {
                           <Switch
                             checked={exportDefaults.includeDrawings}
                             onCheckedChange={(v) =>
-                              setExportDefaults({ ...exportDefaults, includeDrawings: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                exportDefaults: { ...prev.exportDefaults, includeDrawings: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -497,7 +790,10 @@ export default function Settings() {
                           <Switch
                             checked={exportDefaults.includePricing}
                             onCheckedChange={(v) =>
-                              setExportDefaults({ ...exportDefaults, includePricing: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                exportDefaults: { ...prev.exportDefaults, includePricing: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -506,7 +802,10 @@ export default function Settings() {
                           <Select
                             value={exportDefaults.paperSize}
                             onValueChange={(v) =>
-                              setExportDefaults({ ...exportDefaults, paperSize: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                exportDefaults: { ...prev.exportDefaults, paperSize: v },
+                              }))
                             }
                           >
                             <SelectTrigger className="w-32">
@@ -524,7 +823,10 @@ export default function Settings() {
                           <Select
                             value={exportDefaults.orientation}
                             onValueChange={(v) =>
-                              setExportDefaults({ ...exportDefaults, orientation: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                exportDefaults: { ...prev.exportDefaults, orientation: v },
+                              }))
                             }
                           >
                             <SelectTrigger className="w-32">
@@ -553,26 +855,105 @@ export default function Settings() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                      <div className="space-y-4">
+                      <form className="space-y-4" onSubmit={handleUpdatePassword}>
                         <h4 className="text-sm font-medium">Change Password</h4>
                         <div className="grid gap-4 max-w-md">
                           <div className="space-y-2">
                             <Label htmlFor="current-password">Current password</Label>
-                            <Input id="current-password" type="password" placeholder="••••••••" />
+                            <div className="relative">
+                              <Input
+                                id="current-password"
+                                type={showCurrentPassword ? 'text' : 'password'}
+                                value={currentPassword}
+                                onChange={(e) => setCurrentPassword(e.target.value)}
+                                placeholder="••••••••"
+                                className="pr-10"
+                                required
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowCurrentPassword((prev) => !prev)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                aria-label={showCurrentPassword ? 'Hide password' : 'Show password'}
+                              >
+                                {showCurrentPassword ? (
+                                  <EyeOff className="w-4 h-4" />
+                                ) : (
+                                  <Eye className="w-4 h-4" />
+                                )}
+                              </button>
+                            </div>
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="new-password">New password</Label>
-                            <Input id="new-password" type="password" placeholder="••••••••" />
+                            <div className="relative">
+                              <Input
+                                id="new-password"
+                                type={showNewPassword ? 'text' : 'password'}
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="••••••••"
+                                className="pr-10"
+                                required
+                                minLength={8}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowNewPassword((prev) => !prev)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                              >
+                                {showNewPassword ? (
+                                  <EyeOff className="w-4 h-4" />
+                                ) : (
+                                  <Eye className="w-4 h-4" />
+                                )}
+                              </button>
+                            </div>
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="confirm-password">Confirm new password</Label>
-                            <Input id="confirm-password" type="password" placeholder="••••••••" />
+                            <div className="relative">
+                              <Input
+                                id="confirm-password"
+                                type={showConfirmPassword ? 'text' : 'password'}
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                placeholder="••••••••"
+                                className="pr-10"
+                                required
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                              >
+                                {showConfirmPassword ? (
+                                  <EyeOff className="w-4 h-4" />
+                                ) : (
+                                  <Eye className="w-4 h-4" />
+                                )}
+                              </button>
+                            </div>
                           </div>
-                          <Button variant="outline" size="sm" className="w-fit">
-                            Update Password
+                          {passwordError && (
+                            <p className="text-sm text-destructive">{passwordError}</p>
+                          )}
+                          {passwordSuccess && (
+                            <p className="text-sm text-emerald-600">{passwordSuccess}</p>
+                          )}
+                          <Button
+                            type="submit"
+                            variant="outline"
+                            size="sm"
+                            className="w-fit"
+                            disabled={isUpdatingPassword}
+                          >
+                            {isUpdatingPassword ? 'Updating...' : 'Update Password'}
                           </Button>
                         </div>
-                      </div>
+                      </form>
 
                       <Separator />
 
@@ -581,8 +962,8 @@ export default function Settings() {
                           label="Two-factor authentication"
                           description="Add an extra layer of security to your account"
                         >
-                          <Button variant="outline" size="sm">
-                            Enable 2FA
+                          <Button variant="outline" size="sm" onClick={handleEnable2FA} disabled={isEnabling2FA}>
+                            {isEnabling2FA ? 'Enabling...' : 'Enable 2FA'}
                           </Button>
                         </SettingRow>
 
@@ -590,8 +971,8 @@ export default function Settings() {
                           label="Active sessions"
                           description="Manage devices signed into your account"
                         >
-                          <Button variant="outline" size="sm">
-                            View Sessions
+                          <Button variant="outline" size="sm" onClick={handleViewSessions} disabled={isLoadingSessions}>
+                            {isLoadingSessions ? 'Loading...' : 'View Sessions'}
                           </Button>
                         </SettingRow>
                       </div>
@@ -616,7 +997,10 @@ export default function Settings() {
                           <Select
                             value={appearance.theme}
                             onValueChange={(v) =>
-                              setAppearance({ ...appearance, theme: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                appearance: { ...prev.appearance, theme: v },
+                              }))
                             }
                           >
                             <SelectTrigger className="w-32">
@@ -637,7 +1021,10 @@ export default function Settings() {
                           <Select
                             value={appearance.accentColor}
                             onValueChange={(v) =>
-                              setAppearance({ ...appearance, accentColor: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                appearance: { ...prev.appearance, accentColor: v },
+                              }))
                             }
                           >
                             <SelectTrigger className="w-32">
@@ -659,7 +1046,10 @@ export default function Settings() {
                           <Switch
                             checked={appearance.compactMode}
                             onCheckedChange={(v) =>
-                              setAppearance({ ...appearance, compactMode: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                appearance: { ...prev.appearance, compactMode: v },
+                              }))
                             }
                           />
                         </SettingRow>
@@ -671,7 +1061,10 @@ export default function Settings() {
                           <Switch
                             checked={appearance.showAnimations}
                             onCheckedChange={(v) =>
-                              setAppearance({ ...appearance, showAnimations: v })
+                              setSettings((prev) => ({
+                                ...prev,
+                                appearance: { ...prev.appearance, showAnimations: v },
+                              }))
                             }
                           />
                         </SettingRow>

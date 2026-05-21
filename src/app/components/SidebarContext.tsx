@@ -6,9 +6,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useIsMobile } from './ui/use-mobile';
-import { Button } from './ui/button';
 import { cn } from './ui/utils';
 import { isDesktopViewport } from './sidebar-utils';
 
@@ -115,23 +114,27 @@ export function useSidebar() {
 }
 
 export function SidebarMenuButton({ className }: { className?: string }) {
-  const { isCollapsed, toggleSidebar } = useSidebar();
-  const showButton = !isDesktopViewport() || isCollapsed;
+  const { isCollapsed, isMobile, toggleSidebar } = useSidebar();
 
-  if (!showButton) {
-    return null;
-  }
+  const Icon = isMobile ? Menu : isCollapsed ? PanelLeftOpen : PanelLeftClose;
+  const label = isMobile
+    ? 'Open menu'
+    : isCollapsed
+      ? 'Expand sidebar'
+      : 'Collapse sidebar';
 
   return (
-    <Button
+    <button
       type="button"
-      variant="ghost"
-      size="icon"
-      className={cn('h-9 w-9 shrink-0', className)}
       onClick={toggleSidebar}
-      aria-label="Toggle menu"
+      aria-label={label}
+      title={label}
+      className={cn(
+        'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-foreground shadow-sm transition-colors hover:bg-muted hover:text-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/40',
+        className,
+      )}
     >
-      <Menu className="w-5 h-5" />
-    </Button>
+      <Icon className="h-4 w-4" strokeWidth={1.75} />
+    </button>
   );
 }

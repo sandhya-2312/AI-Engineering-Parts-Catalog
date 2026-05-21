@@ -14,6 +14,8 @@ export interface Part {
   tags: string[];
   thumbnail: string;
   downloads: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export const mockParts: Part[] = [

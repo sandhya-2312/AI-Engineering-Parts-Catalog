@@ -46,16 +46,16 @@ Production output is written to the `dist/` folder.
 
 ## Login
 
-Authentication is **mocked** for demo purposes. There is no backend validation — any email and password will work as long as both fields are filled.
+Authentication uses the **NestJS API** (`AI Engineering Parts Catalog-api`). Start the backend before signing in.
 
-**Example credentials:**
+**Default admin (first boot):**
 
 | Field | Value |
 |-------|-------|
-| Email | `engineer@company.com` |
-| Password | `password123` |
+| Email | `admin@engineerx.com` |
+| Password | `ChangeMeOnFirstLogin!` |
 
-Click **Sign In** to access the dashboard.
+You will be prompted to change the password on first login. Set `VITE_API_URL=/api` in `.env` (see `.env.example`); Vite proxies `/api` to `http://localhost:3000` in development.
 
 ## Routes
 

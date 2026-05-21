@@ -15,9 +15,7 @@ export default function ARViewer() {
   const [isPlaced, setIsPlaced] = useState(false);
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-background to-primary/10 relative overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,var(--engineering-glow),transparent_50%)] opacity-30" />
-
+    <div className="min-h-screen w-full bg-white relative overflow-hidden">
       <div className="relative z-10 h-screen flex flex-col">
         <div className="p-4 flex items-center justify-between bg-card/80 backdrop-blur-md border-b border-border">
           <div className="flex items-center gap-3">
@@ -113,7 +111,7 @@ export default function ARViewer() {
             )}
           </div>
 
-          <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background/80 to-transparent pointer-events-none" />
+          <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-white/80 to-transparent pointer-events-none" />
         </div>
       </div>
     </div>
