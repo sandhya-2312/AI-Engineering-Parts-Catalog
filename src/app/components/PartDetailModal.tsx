@@ -22,6 +22,7 @@ import { partsApi } from '../lib/api/parts';
 import { isApiError } from '../context/AuthContext';
 import type { LookupEntity } from '../lib/api/types';
 import { availabilityToApi, mapApiPartToPart } from '../lib/mapPart';
+import { useCatalogSettings } from '../hooks/useCatalogSettings';
 
 interface PartDetailModalProps {
   part: Part;
@@ -47,6 +48,7 @@ function resolveThumbnailUrl(value: string) {
 
 export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDetailModalProps) {
   const navigate = useNavigate();
+  const catalogPrefs = useCatalogSettings();
   const [imageFailed, setImageFailed] = useState(false);
   const [resolvedImageSrc, setResolvedImageSrc] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -301,11 +303,13 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => { navigate('/ar-viewer'); onClose(); }} className="flex-1">
-                  <Eye className="w-4 h-4" />
-                  View in AR
-                </Button>
-                <Button variant="outline" className="flex-1">
+                {catalogPrefs.enableARPreview && (
+                  <Button onClick={() => { navigate('/ar-viewer'); onClose(); }} className="flex-1">
+                    <Eye className="w-4 h-4" />
+                    View in AR
+                  </Button>
+                )}
+                <Button variant="outline" className={catalogPrefs.enableARPreview ? 'flex-1' : 'w-full'}>
                   <Download className="w-4 h-4" />
                   Download STL
                 </Button>

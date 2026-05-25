@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Label } from './ui/label';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { useAuth, isApiError } from '../context/AuthContext';
@@ -33,7 +34,13 @@ export default function Login() {
       await login(email.trim(), password, rememberMe);
       navigate(from, { replace: true });
     } catch (err) {
-      setError(isApiError(err) ? err.message : 'Unable to sign in. Check your credentials.');
+      const message = isApiError(err) ? err.message : 'Unable to sign in. Check your credentials.';
+      const isAdminEmail = email.trim().toLowerCase() === 'admin@engineerx.com';
+      setError(
+        isAdminEmail && message.toLowerCase().includes('invalid')
+          ? `${message} If this is the default admin, restart the API with ADMIN_RESET_PASSWORD_ON_BOOT=true, then use the password from your API .env (ADMIN_TEMP_PASSWORD).`
+          : message,
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -87,40 +94,42 @@ export default function Login() {
 
               <form onSubmit={handleLogin} className="space-y-4">
                 {error && (
-                  <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
-                    {error}
-                  </p>
+                  <div className="space-y-2">
+                    <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
+                      {error}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Use the password from your administrator, or the temporary password if this is
+                      your first sign-in.
+                    </p>
+                  </div>
                 )}
 
                 <div className="space-y-2">
-                  <label htmlFor="email" className="text-sm text-foreground">
-                    Email Address
-                  </label>
+                  <Label htmlFor="email">Email Address</Label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                     <Input
                       id="email"
                       type="email"
-                      placeholder="admin@engineerx.com"
+                      placeholder="you@company.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="pl-10"
                       required
-                      autoComplete="email"
+                      autoComplete="username"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="password" className="text-sm text-foreground">
-                    Password
-                  </label>
+                  <Label htmlFor="password">Password</Label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                     <Input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
-                      placeholder="••••••••"
+                      placeholder=""
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="pl-10 pr-10"

@@ -8,6 +8,7 @@ export interface ApiUser {
   role: UserRole;
   fullName?: string;
   jobTitle?: string;
+  contactNo?: string;
   department?: string;
   photoUrl?: string;
   twoFactorEnabled?: boolean;
@@ -76,6 +77,7 @@ export interface UserSettingsPayload {
     role: string;
     jobTitle: string;
     department: string;
+    contactNo: string;
     photoUrl?: string;
   };
   catalog: Record<string, unknown>;
@@ -86,6 +88,11 @@ export interface UserSettingsPayload {
     twoFactorEnabled: boolean;
   };
 }
+
+export type UpdateSettingsResponse = UserSettingsPayload & {
+  accessToken?: string;
+  user?: ApiUser;
+};
 
 export interface UserSession {
   id: string;

@@ -1,5 +1,5 @@
 import { apiFetch, apiUpload } from './client';
-import type { ApiUser, LoginResponse, UserSession, UserSettingsPayload } from './types';
+import type { ApiUser, LoginResponse, UpdateSettingsResponse, UserSession, UserSettingsPayload } from './types';
 
 export const authApi = {
   login(email: string, password: string) {
@@ -25,7 +25,7 @@ export const authApi = {
   },
 
   updateSettings(payload: UserSettingsPayload) {
-    return apiFetch<UserSettingsPayload>('/auth/settings', {
+    return apiFetch<UpdateSettingsResponse>('/auth/settings', {
       method: 'POST',
       json: payload,
     });

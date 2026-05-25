@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { catalogApi } from '../lib/api/catalog';
+import { parseItemsPerPage } from '../lib/catalogSettings';
 import { mapApiPartToPart } from '../lib/mapPart';
 import type { LookupEntity } from '../lib/api/types';
 import type { Part } from '../lib/mockData';
+import { useCatalogSettings } from './useCatalogSettings';
 
 const ALL = '';
 
 export function useCatalogPage() {
+  const catalogSettings = useCatalogSettings();
+  const itemsPerPage = parseItemsPerPage(catalogSettings.itemsPerPage);
+
   const [parts, setParts] = useState<Part[]>([]);
   const [categories, setCategories] = useState<LookupEntity[]>([]);
   const [materials, setMaterials] = useState<LookupEntity[]>([]);
@@ -24,8 +29,6 @@ export function useCatalogPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const itemsPerPage = 10;
-
   const queryParams = useMemo(
     () => ({
       page: currentPage,
@@ -38,8 +41,12 @@ export function useCatalogPage() {
       sortBy: 'createdAt',
       sortOrder: 'DESC' as const,
     }),
-    [currentPage, searchQuery, categoryId, materialId, manufacturerId, partType],
+    [currentPage, itemsPerPage, searchQuery, categoryId, materialId, manufacturerId, partType],
   );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [itemsPerPage]);
 
   const applyFilters = useCallback((filters: Awaited<ReturnType<typeof catalogApi.filters>>) => {
     setCategories(filters.categories.filter((c) => c.id !== ''));

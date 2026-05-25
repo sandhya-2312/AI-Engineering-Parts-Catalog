@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import Catalog from './components/Catalog';
 import ARViewer from './components/ARViewer';
 import Settings from './components/Settings';
+import Members from './components/Members';
 import ProtectedRoute from './components/ProtectedRoute';
 import ChangePasswordDialog from './components/ChangePasswordDialog';
 
@@ -21,6 +22,7 @@ export default function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/catalog" element={<Catalog />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/members" element={<Members />} />
             </Route>
             <Route path="/ar-viewer" element={<ARViewer />} />
           </Route>

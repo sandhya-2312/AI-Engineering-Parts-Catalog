@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Package,
   Settings,
+  Users,
   LogOut,
   ChevronRight,
   X,
@@ -12,16 +13,19 @@ import { cn } from './ui/utils';
 import { useSidebar } from './SidebarContext';
 import { AppLogo } from './AppLogo';
 
-const navigation = [
+const baseNavigation = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Parts Catalog', path: '/catalog', icon: Package },
   { name: 'Settings', path: '/settings', icon: Settings },
-];
+] as const;
+
+const adminNavigation = [{ name: 'Members', path: '/members', icon: Users }] as const;
 
 export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
+  const { logout, isAdmin } = useAuth();
+  const navigation = isAdmin ? [...baseNavigation, ...adminNavigation] : [...baseNavigation];
   const { isOpen, isCollapsed, isMobile, closeSidebar, toggleCollapse, expandSidebar } =
     useSidebar();
 

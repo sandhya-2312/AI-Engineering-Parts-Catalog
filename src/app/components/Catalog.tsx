@@ -6,6 +6,8 @@ import { Button } from './ui/button';
 import { Search, Filter, ChevronLeft, ChevronRight, Plus, Upload, X, Download, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { Part } from '../lib/mockData';
 import { useCatalogPage } from '../hooks/useCatalogPage';
+import { useCatalogSettings } from '../hooks/useCatalogSettings';
+import type { CatalogViewMode } from '../lib/catalogSettings';
 import { useAuth, isApiError } from '../context/AuthContext';
 import { catalogApi } from '../lib/api/catalog';
 import { partsApi } from '../lib/api/parts';
@@ -92,6 +94,12 @@ function PartPreview({ thumbnail }: { thumbnail: string }) {
 export default function Catalog() {
   const { canWrite } = useAuth();
   const catalog = useCatalogPage();
+  const catalogPrefs = useCatalogSettings();
+  const [viewMode, setViewMode] = useState<CatalogViewMode>(catalogPrefs.defaultView);
+
+  useEffect(() => {
+    setViewMode(catalogPrefs.defaultView);
+  }, [catalogPrefs.defaultView]);
   const [selectedPart, setSelectedPart] = useState<Part | null>(null);
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -395,125 +403,179 @@ export default function Catalog() {
           </Card>
 
           <Card className="flex-1 min-h-0 gap-0 border border-border/50 overflow-hidden flex flex-col">
-            <div className="flex-1 min-h-0 overflow-auto relative">
-              {/*
-                border-separate (not border-collapse) — sticky thead works reliably in Chrome/Edge.
-                Opaque bg on each th prevents body rows showing through while scrolling.
-              */}
-              <table className="w-full border-separate border-spacing-0">
-                <thead>
-                  <tr>
-                    <th className="sticky top-0 z-20 bg-card text-left px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
-                      Preview
-                    </th>
-                    <th className="sticky top-0 z-20 bg-card text-left px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
-                      Part Number
-                    </th>
-                    <th className="sticky top-0 z-20 bg-card text-left px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
-                      Part Name
-                    </th>
-                    <th className="sticky top-0 z-20 bg-card text-left px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
-                      Category
-                    </th>
-                    <th className="sticky top-0 z-20 bg-card text-left px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
-                      Material
-                    </th>
-                    <th className="sticky top-0 z-20 bg-card text-left px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
-                      Download
-                    </th>
-                    <th className="sticky top-0 z-20 bg-card text-right px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {catalog.isLoading && (
+            <div className="flex-1 min-h-0 overflow-auto relative p-3">
+              {catalog.isLoading && (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  <Loader2 className="w-5 h-5 animate-spin inline-block mr-2" />
+                  Loading parts…
+                </div>
+              )}
+              {!catalog.isLoading && catalog.error && (
+                <div className="py-8 text-center text-sm text-destructive">{catalog.error}</div>
+              )}
+              {!catalog.isLoading && !catalog.error && currentParts.length === 0 && (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  No parts found. {canWrite ? 'Add your first part to get started.' : ''}
+                </div>
+              )}
+              {!catalog.isLoading && !catalog.error && currentParts.length > 0 && viewMode === 'table' && (
+                <table className="w-full border-separate border-spacing-0">
+                  <thead>
                     <tr>
-                      <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                        <Loader2 className="w-5 h-5 animate-spin inline-block mr-2" />
-                        Loading parts…
-                      </td>
+                      {catalogPrefs.showThumbnails && (
+                        <th className="sticky top-0 z-20 bg-card text-left px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
+                          Preview
+                        </th>
+                      )}
+                      {catalogPrefs.showPartNumbers && (
+                        <th className="sticky top-0 z-20 bg-card text-left px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
+                          Part Number
+                        </th>
+                      )}
+                      <th className="sticky top-0 z-20 bg-card text-left px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
+                        Part Name
+                      </th>
+                      <th className="sticky top-0 z-20 bg-card text-left px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
+                        Category
+                      </th>
+                      <th className="sticky top-0 z-20 bg-card text-left px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
+                        Material
+                      </th>
+                      <th className="sticky top-0 z-20 bg-card text-left px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
+                        Download
+                      </th>
+                      <th className="sticky top-0 z-20 bg-card text-right px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border">
+                        Actions
+                      </th>
                     </tr>
-                  )}
-                  {!catalog.isLoading && catalog.error && (
-                    <tr>
-                      <td colSpan={7} className="px-3 py-8 text-center text-sm text-destructive">
-                        {catalog.error}
-                      </td>
-                    </tr>
-                  )}
-                  {!catalog.isLoading && !catalog.error && currentParts.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                        No parts found. {canWrite ? 'Add your first part to get started.' : ''}
-                      </td>
-                    </tr>
-                  )}
-                  {!catalog.isLoading && currentParts.map((part) => (
-                    <tr
-                      key={part.id}
-                      className="border-b border-border hover:bg-accent/5 transition-colors"
-                    >
-                      <td className="px-3 py-1.5 align-middle">
-                        <PartPreview thumbnail={part.thumbnail} />
-                      </td>
-                      <td className="px-3 py-1.5 text-xs text-foreground align-middle font-mono">{part.partNumber}</td>
-                      <td
-                        className="px-3 py-1.5 text-xs text-primary align-middle cursor-pointer hover:underline"
-                        onClick={() => setSelectedPart(part)}
+                  </thead>
+                  <tbody>
+                    {currentParts.map((part) => (
+                      <tr
+                        key={part.id}
+                        className="border-b border-border hover:bg-accent/5 transition-colors"
                       >
-                        {part.name}
-                      </td>
-                      <td className="px-3 py-1.5 text-xs text-muted-foreground align-middle">{part.category}</td>
-                      <td className="px-3 py-1.5 text-xs text-muted-foreground align-middle">{part.material}</td>
-                      <td className="px-3 py-1.5 align-middle">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-2 text-xs gap-1"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDownloadFiles(part.id);
-                          }}
-                        >
-                          <Download className="w-3 h-3" />
-                          Files
-                        </Button>
-                      </td>
-                      <td className="px-3 py-1.5 align-middle">
-                        {canWrite && (
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-7 w-7"
-                            aria-label={`Edit ${part.name}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedPart(part);
-                            }}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-7 w-7 text-destructive hover:text-destructive"
-                            aria-label={`Delete ${part.name}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeletePart(part.partNumber);
-                            }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
+                        {catalogPrefs.showThumbnails && (
+                          <td className="px-3 py-1.5 align-middle">
+                            <PartPreview thumbnail={part.thumbnail} />
+                          </td>
                         )}
-                      </td>
-                    </tr>
+                        {catalogPrefs.showPartNumbers && (
+                          <td className="px-3 py-1.5 text-xs text-foreground align-middle font-mono">
+                            {part.partNumber}
+                          </td>
+                        )}
+                        <td
+                          className="px-3 py-1.5 text-xs text-primary align-middle cursor-pointer hover:underline"
+                          onClick={() => setSelectedPart(part)}
+                        >
+                          {part.name}
+                        </td>
+                        <td className="px-3 py-1.5 text-xs text-muted-foreground align-middle">{part.category}</td>
+                        <td className="px-3 py-1.5 text-xs text-muted-foreground align-middle">{part.material}</td>
+                        <td className="px-3 py-1.5 align-middle">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs gap-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadFiles(part.id);
+                            }}
+                          >
+                            <Download className="w-3 h-3" />
+                            Files
+                          </Button>
+                        </td>
+                        <td className="px-3 py-1.5 align-middle">
+                          {canWrite && (
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                aria-label={`Edit ${part.name}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedPart(part);
+                                }}
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7 text-destructive hover:text-destructive"
+                                aria-label={`Delete ${part.name}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeletePart(part.partNumber);
+                                }}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {!catalog.isLoading && !catalog.error && currentParts.length > 0 && viewMode === 'grid' && (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {currentParts.map((part) => (
+                    <div
+                      key={part.id}
+                      className="rounded-lg border border-border p-3 hover:bg-accent/5 transition-colors cursor-pointer"
+                      onClick={() => setSelectedPart(part)}
+                    >
+                      {catalogPrefs.showThumbnails && (
+                        <div className="mb-2 flex justify-center">
+                          <PartPreview thumbnail={part.thumbnail} />
+                        </div>
+                      )}
+                      <p className="text-sm font-medium text-primary truncate">{part.name}</p>
+                      {catalogPrefs.showPartNumbers && (
+                        <p className="text-xs font-mono text-muted-foreground mt-0.5">{part.partNumber}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-1">{part.category} · {part.material}</p>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              )}
+              {!catalog.isLoading && !catalog.error && currentParts.length > 0 && viewMode === 'list' && (
+                <div className="divide-y divide-border">
+                  {currentParts.map((part) => (
+                    <div
+                      key={part.id}
+                      className="flex items-center gap-3 py-2 hover:bg-accent/5 transition-colors cursor-pointer"
+                      onClick={() => setSelectedPart(part)}
+                    >
+                      {catalogPrefs.showThumbnails && <PartPreview thumbnail={part.thumbnail} />}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-primary truncate">{part.name}</p>
+                        {catalogPrefs.showPartNumbers && (
+                          <p className="text-xs font-mono text-muted-foreground">{part.partNumber}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">{part.category} · {part.material}</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs gap-1 shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownloadFiles(part.id);
+                        }}
+                      >
+                        <Download className="w-3 h-3" />
+                        Files
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="border-t border-border px-3 py-2 flex items-center justify-between bg-muted/20 shrink-0">

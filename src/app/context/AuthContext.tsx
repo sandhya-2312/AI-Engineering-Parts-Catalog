@@ -16,10 +16,12 @@ interface AuthContextValue {
   isLoading: boolean;
   isAuthenticated: boolean;
   canWrite: boolean;
+  isAdmin: boolean;
   login: (email: string, password: string, rememberMe: boolean) => Promise<void>;
   logout: () => void;
   refreshProfile: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  syncSession: (result: { accessToken?: string; user?: ApiUser }) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -64,18 +66,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(result.user);
   }, []);
 
+  const syncSession = useCallback((result: { accessToken?: string; user?: ApiUser }) => {
+    if (result.accessToken) {
+      setStoredToken(result.accessToken, !!localStorage.getItem('accessToken'));
+    }
+    if (result.user) setUser(result.user);
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       isLoading,
       isAuthenticated: !!user,
       canWrite: user?.role === 'admin' || user?.role === 'user',
+      isAdmin: user?.role === 'admin',
       login,
       logout,
       refreshProfile,
       changePassword,
+      syncSession,
     }),
-    [user, isLoading, login, logout, refreshProfile, changePassword],
+    [user, isLoading, login, logout, refreshProfile, changePassword, syncSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

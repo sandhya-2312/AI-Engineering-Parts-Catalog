@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router';
-import { Bell, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Input } from './ui/input';
 import { SidebarMenuButton } from './SidebarContext';
 import { ProfileAvatar } from './ProfileAvatar';
+import HeaderNotifications from './HeaderNotifications';
 import { useProfileDisplay } from '../hooks/useProfileDisplay';
 import { cn } from './ui/utils';
 
@@ -52,13 +53,7 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
-          <button
-            type="button"
-            className="relative p-1.5 rounded-lg hover:bg-secondary transition-colors"
-          >
-            <Bell className="w-4 h-4 text-foreground" />
-            <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-primary rounded-full" />
-          </button>
+          <HeaderNotifications />
 
           <div className="flex items-center gap-2.5 pl-3 border-l border-border min-w-0">
             <ProfileAvatar size="sm" name={displayName} photoUrl={photoUrl} />
