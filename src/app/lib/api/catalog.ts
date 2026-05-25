@@ -60,13 +60,19 @@ export const catalogApi = {
   /** POST /catalog/parts/add-with-files — Add Part + image/CAD files */
   addPartWithFiles(
     body: Record<string, string | undefined>,
-    files: { partImage?: File | null; stlFile?: File | null; stepFile?: File | null },
+    files: {
+      partImage?: File | null;
+      glbFile?: File | null;
+      stlFile?: File | null;
+      stepFile?: File | null;
+    },
   ) {
     const form = new FormData();
     Object.entries(body).forEach(([key, value]) => {
       if (value !== undefined && value !== '') form.append(key, value);
     });
     if (files.partImage) form.append('partImage', files.partImage);
+    if (files.glbFile) form.append('glbFile', files.glbFile);
     if (files.stlFile) form.append('stlFile', files.stlFile);
     if (files.stepFile) form.append('stepFile', files.stepFile);
     return apiUpload<ApiPart>('/catalog/parts/add-with-files', form);

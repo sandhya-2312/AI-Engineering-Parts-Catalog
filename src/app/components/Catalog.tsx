@@ -122,6 +122,7 @@ export default function Catalog() {
   const [newPartManufacturerManual, setNewPartManufacturerManual] = useState('');
   const [newPartDescription, setNewPartDescription] = useState('');
   const [partImage, setPartImage] = useState<File | null>(null);
+  const [glbFile, setGlbFile] = useState<File | null>(null);
   const [stlFile, setStlFile] = useState<File | null>(null);
   const [stepFile, setStepFile] = useState<File | null>(null);
 
@@ -138,6 +139,7 @@ export default function Catalog() {
     setNewPartManufacturerManual('');
     setNewPartDescription('');
     setPartImage(null);
+    setGlbFile(null);
     setStlFile(null);
     setStepFile(null);
   };
@@ -155,7 +157,7 @@ export default function Catalog() {
   const currentParts = catalog.parts;
 
   const uploadPartFiles = async (partId: string) => {
-    const files = [partImage, stlFile, stepFile].filter(Boolean) as File[];
+    const files = [partImage, glbFile, stlFile, stepFile].filter(Boolean) as File[];
     for (const file of files) {
       await partsApi.uploadFile(partId, file);
     }
@@ -235,10 +237,10 @@ export default function Catalog() {
 
       if (partFormMode === 'edit' && editingPartId && editingOriginalPartNumber) {
         await partsApi.update(editingOriginalPartNumber, body);
-        if (partImage || stlFile || stepFile) {
+        if (partImage || glbFile || stlFile || stepFile) {
           await uploadPartFiles(editingPartId);
         }
-      } else if (partImage || stlFile || stepFile) {
+      } else if (partImage || glbFile || stlFile || stepFile) {
         await catalogApi.addPartWithFiles(
           {
             name: newPartName,
@@ -248,7 +250,7 @@ export default function Catalog() {
             manufacturerId: manufacturerId || undefined,
             description: newPartDescription || undefined,
           },
-          { partImage, stlFile, stepFile },
+          { partImage, glbFile, stlFile, stepFile },
         );
       } else {
         await catalogApi.addPart(body);
@@ -792,8 +794,42 @@ export default function Catalog() {
                       </div>
 
                       <div className="space-y-2">
+                        <label htmlFor="glbFile" className="text-sm text-foreground">
+                          GLB Model (3D preview &amp; AR)
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <label
+                            htmlFor="glbFile"
+                            className="flex-1 flex items-center gap-3 px-4 py-3 rounded-lg border-2 border-dashed border-border hover:border-primary/50 cursor-pointer transition-colors bg-muted/20"
+                          >
+                            <Upload className="w-5 h-5 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground">
+                              {glbFile ? glbFile.name : 'Choose .glb file'}
+                            </span>
+                            <input
+                              id="glbFile"
+                              type="file"
+                              accept=".glb,model/gltf-binary"
+                              onChange={(e) => setGlbFile(e.target.files?.[0] || null)}
+                              className="hidden"
+                            />
+                          </label>
+                          {glbFile && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setGlbFile(null)}
+                            >
+                              Clear
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
                         <label htmlFor="stlFile" className="text-sm text-foreground">
-                          STL File
+                          STL File (CAD download)
                         </label>
                         <div className="flex items-center gap-3">
                           <label
@@ -802,12 +838,12 @@ export default function Catalog() {
                           >
                             <Upload className="w-5 h-5 text-muted-foreground" />
                             <span className="text-sm text-muted-foreground">
-                              {stlFile ? stlFile.name : 'Choose STL CAD file'}
+                              {stlFile ? stlFile.name : 'Choose .stl file'}
                             </span>
                             <input
                               id="stlFile"
                               type="file"
-                              accept=".stl"
+                              accept=".stl,model/stl"
                               onChange={(e) => setStlFile(e.target.files?.[0] || null)}
                               className="hidden"
                             />

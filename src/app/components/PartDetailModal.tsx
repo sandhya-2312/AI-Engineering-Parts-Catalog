@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -13,7 +13,17 @@ import {
   ZoomOut,
   Maximize,
   Pencil,
+  Upload,
 } from 'lucide-react';
+import type { ApiPartFile } from '../lib/api/types';
+import {
+  findPartFile,
+  isGlbPartFile,
+  isImagePartFile,
+  isPdfPartFile,
+  isStepPartFile,
+  isStlPartFile,
+} from '../lib/partModel';
 import { Part } from '../lib/mockData';
 import { getStoredToken } from '../lib/api/client';
 import { Input } from './ui/input';
@@ -23,6 +33,9 @@ import { isApiError } from '../context/AuthContext';
 import type { LookupEntity } from '../lib/api/types';
 import { availabilityToApi, mapApiPartToPart } from '../lib/mapPart';
 import { useCatalogSettings } from '../hooks/useCatalogSettings';
+import PartModelViewer, { type PartModelViewerControls } from './PartModelViewer';
+import { loadPartModelAsset, type PartModelAsset } from '../lib/partModel';
+import { resolveApiFileUrl } from '../lib/resolveFileUrl';
 
 interface PartDetailModalProps {
   part: Part;
@@ -39,11 +52,7 @@ function isLikelyImageThumbnail(value: string) {
 
 function resolveThumbnailUrl(value: string) {
   if (/^(https?:|data:image\/|blob:)/i.test(value)) return value;
-  const rawApiBase = import.meta.env.VITE_API_URL ?? '/api';
-  if (value.startsWith('/files/')) return `${rawApiBase}${value}`;
-  const apiBase = rawApiBase.endsWith('/api') ? rawApiBase.slice(0, -4) : rawApiBase;
-  const normalizedPath = value.startsWith('/') ? value : `/${value}`;
-  return `${apiBase}${normalizedPath}`;
+  return resolveApiFileUrl(value);
 }
 
 export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDetailModalProps) {
@@ -72,6 +81,16 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
   const [manualMaterial, setManualMaterial] = useState('');
   const [manualManufacturer, setManualManufacturer] = useState('');
   const [relatedParts, setRelatedParts] = useState<Part[]>([]);
+  const [modelAsset, setModelAsset] = useState<PartModelAsset | null>(null);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [existingFiles, setExistingFiles] = useState<ApiPartFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [partImage, setPartImage] = useState<File | null>(null);
+  const [glbFile, setGlbFile] = useState<File | null>(null);
+  const [stlFile, setStlFile] = useState<File | null>(null);
+  const [stepFile, setStepFile] = useState<File | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const viewerControlsRef = useRef<PartModelViewerControls | null>(null);
   const canRenderImage = isLikelyImageThumbnail(part.thumbnail) && !imageFailed;
   const isProtectedApiFile = part.thumbnail.startsWith('/files/');
 
@@ -112,6 +131,38 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [part.thumbnail, canRenderImage, isProtectedApiFile]);
+
+  useEffect(() => {
+    let isActive = true;
+    viewerControlsRef.current = null;
+    setModelAsset(null);
+    setModelLoading(true);
+
+    loadPartModelAsset(part.id)
+      .then((asset) => {
+        if (isActive) setModelAsset(asset);
+      })
+      .catch(() => {
+        if (isActive) setModelAsset(null);
+      })
+      .finally(() => {
+        if (isActive) setModelLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [part.id]);
+
+  useEffect(() => {
+    return () => {
+      if (modelAsset?.url) URL.revokeObjectURL(modelAsset.url);
+    };
+  }, [modelAsset?.url]);
+
+  useEffect(() => {
+    viewerControlsRef.current = null;
+  }, [modelAsset?.url]);
 
   useEffect(() => {
     catalogApi
@@ -157,6 +208,58 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
       })
       .catch(() => setRelatedParts([]));
   }, [part.id, part.name, part.category, part.material]);
+
+  useEffect(() => {
+    let active = true;
+    setFilesLoading(true);
+    partsApi
+      .listFiles(part.id)
+      .then((files) => {
+        if (active) setExistingFiles(files);
+      })
+      .catch(() => {
+        if (active) setExistingFiles([]);
+      })
+      .finally(() => {
+        if (active) setFilesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [part.id]);
+
+  const currentImageFile = findPartFile(existingFiles, isImagePartFile);
+  const currentGlbFile = findPartFile(existingFiles, isGlbPartFile);
+  const currentStlFile = findPartFile(existingFiles, isStlPartFile);
+  const currentStepFile = findPartFile(existingFiles, isStepPartFile);
+  const currentPdfFile = findPartFile(existingFiles, isPdfPartFile);
+
+  const resetPendingFiles = () => {
+    setPartImage(null);
+    setGlbFile(null);
+    setStlFile(null);
+    setStepFile(null);
+    setPdfFile(null);
+  };
+
+  const handleCancelEdit = () => {
+    resetPendingFiles();
+    setIsEditing(false);
+    setSaveError('');
+  };
+
+  const reloadModelPreview = async () => {
+    if (modelAsset?.url) URL.revokeObjectURL(modelAsset.url);
+    setModelLoading(true);
+    try {
+      const asset = await loadPartModelAsset(part.id);
+      setModelAsset(asset);
+    } catch {
+      setModelAsset(null);
+    } finally {
+      setModelLoading(false);
+    }
+  };
 
   const formatDate = (value?: string) => {
     if (!value) return '—';
@@ -221,6 +324,16 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
         description: description.trim() || undefined,
       });
 
+      const pendingFiles = [partImage, glbFile, stlFile, stepFile, pdfFile].filter(Boolean) as File[];
+      for (const file of pendingFiles) {
+        await partsApi.uploadFile(part.id, file);
+      }
+
+      if (partImage || glbFile || stlFile) {
+        await reloadModelPreview();
+      }
+
+      resetPendingFiles();
       onPartUpdated?.();
       onClose();
     } catch (error) {
@@ -269,10 +382,24 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
         <div className="flex-1 overflow-y-auto">
           <div className="grid lg:grid-cols-2 gap-6 p-6">
             <div className="space-y-4">
-              <div className="aspect-square rounded-lg border border-border bg-gradient-to-br from-muted/50 to-background relative overflow-hidden">
+              <div
+                id="part-model-preview"
+                className="aspect-square rounded-lg border border-border bg-gradient-to-br from-muted/50 to-background relative overflow-hidden"
+              >
                 <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--engineering-grid)_1px,transparent_1px),linear-gradient(to_bottom,var(--engineering-grid)_1px,transparent_1px)] bg-[size:2rem_2rem]" />
                 <div className="relative z-10 w-full h-full flex items-center justify-center">
-                  {canRenderImage && resolvedImageSrc ? (
+                  {modelAsset ? (
+                    <PartModelViewer
+                      modelUrl={modelAsset.url}
+                      format={modelAsset.format}
+                      className="w-full h-full"
+                      onReady={(controls) => {
+                        viewerControlsRef.current = controls;
+                      }}
+                    />
+                  ) : modelLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading 3D model…</p>
+                  ) : canRenderImage && resolvedImageSrc ? (
                     <img
                       src={resolvedImageSrc}
                       alt={`${part.name} preview`}
@@ -280,59 +407,193 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
                       onError={() => setImageFailed(true)}
                     />
                   ) : (
-                    <div className="text-9xl animate-pulse">{part.thumbnail}</div>
+                    <div className="text-center px-6 space-y-2">
+                      <p className="text-sm text-muted-foreground">No 3D model (GLB / STL) attached</p>
+                      <div className="text-6xl">{part.thumbnail}</div>
+                    </div>
                   )}
                 </div>
 
-                <div className="absolute bottom-4 left-4 right-4 flex justify-between">
-                  <div className="flex gap-2">
-                    <button className="p-2 rounded-lg bg-card/80 backdrop-blur-sm border border-border hover:bg-accent/10 transition-colors">
+                <div className="absolute bottom-4 left-4 right-4 z-20 flex justify-between pointer-events-none">
+                  <div className="flex gap-2 pointer-events-auto">
+                    <button
+                      type="button"
+                      title="Reset view"
+                      disabled={!modelAsset}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        viewerControlsRef.current?.resetView();
+                      }}
+                      className="p-2 rounded-lg bg-card/90 backdrop-blur-sm border border-border hover:bg-accent/10 transition-colors disabled:opacity-40 shadow-sm"
+                    >
                       <RotateCw className="w-4 h-4" />
                     </button>
-                    <button className="p-2 rounded-lg bg-card/80 backdrop-blur-sm border border-border hover:bg-accent/10 transition-colors">
+                    <button
+                      type="button"
+                      title="Zoom in"
+                      disabled={!modelAsset}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        viewerControlsRef.current?.zoomIn();
+                      }}
+                      className="p-2 rounded-lg bg-card/90 backdrop-blur-sm border border-border hover:bg-accent/10 transition-colors disabled:opacity-40 shadow-sm"
+                    >
                       <ZoomIn className="w-4 h-4" />
                     </button>
-                    <button className="p-2 rounded-lg bg-card/80 backdrop-blur-sm border border-border hover:bg-accent/10 transition-colors">
+                    <button
+                      type="button"
+                      title="Zoom out"
+                      disabled={!modelAsset}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        viewerControlsRef.current?.zoomOut();
+                      }}
+                      className="p-2 rounded-lg bg-card/90 backdrop-blur-sm border border-border hover:bg-accent/10 transition-colors disabled:opacity-40 shadow-sm"
+                    >
                       <ZoomOut className="w-4 h-4" />
                     </button>
                   </div>
-                  <button className="p-2 rounded-lg bg-card/80 backdrop-blur-sm border border-border hover:bg-accent/10 transition-colors">
+                  <button
+                    type="button"
+                    title="Full screen"
+                    disabled={!modelAsset}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      viewerControlsRef.current?.toggleFullscreen();
+                    }}
+                    className="p-2 rounded-lg bg-card/90 backdrop-blur-sm border border-border hover:bg-accent/10 transition-colors disabled:opacity-40 shadow-sm pointer-events-auto"
+                  >
                     <Maximize className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                {catalogPrefs.enableARPreview && (
-                  <Button onClick={() => { navigate('/ar-viewer'); onClose(); }} className="flex-1">
-                    <Eye className="w-4 h-4" />
-                    View in AR
-                  </Button>
-                )}
-                <Button variant="outline" className={catalogPrefs.enableARPreview ? 'flex-1' : 'w-full'}>
-                  <Download className="w-4 h-4" />
-                  Download STL
-                </Button>
-              </div>
+              {isEditing ? (
+                <div className="space-y-4 p-4 rounded-lg border border-border bg-muted/20">
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">Replace files</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Upload only the files you want to replace. Existing files stay until you upload a new one.
+                    </p>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" size="sm">
-                  <Download className="w-4 h-4" />
-                  STEP File
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Download className="w-4 h-4" />
-                  PDF Datasheet
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Share2 className="w-4 h-4" />
-                  Share Part
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Star className="w-4 h-4" />
-                  Add to Favorites
-                </Button>
-              </div>
+                  {filesLoading ? (
+                    <p className="text-xs text-muted-foreground">Loading attached files…</p>
+                  ) : (
+                    <div className="space-y-3">
+                      <FileReuploadField
+                        id="edit-part-image"
+                        label="Part image"
+                        currentName={currentImageFile?.originalName}
+                        pendingFile={partImage}
+                        accept="image/*"
+                        onSelect={setPartImage}
+                        onClear={() => setPartImage(null)}
+                      />
+                      <FileReuploadField
+                        id="edit-glb"
+                        label="GLB model (3D & AR)"
+                        currentName={currentGlbFile?.originalName}
+                        pendingFile={glbFile}
+                        accept=".glb,model/gltf-binary"
+                        onSelect={setGlbFile}
+                        onClear={() => setGlbFile(null)}
+                      />
+                      <FileReuploadField
+                        id="edit-stl"
+                        label="STL file"
+                        currentName={currentStlFile?.originalName}
+                        pendingFile={stlFile}
+                        accept=".stl,model/stl"
+                        onSelect={setStlFile}
+                        onClear={() => setStlFile(null)}
+                      />
+                      <FileReuploadField
+                        id="edit-step"
+                        label="STEP file"
+                        currentName={currentStepFile?.originalName}
+                        pendingFile={stepFile}
+                        accept=".step,.stp"
+                        onSelect={setStepFile}
+                        onClear={() => setStepFile(null)}
+                      />
+                      <FileReuploadField
+                        id="edit-pdf"
+                        label="PDF datasheet"
+                        currentName={currentPdfFile?.originalName}
+                        pendingFile={pdfFile}
+                        accept=".pdf,application/pdf"
+                        onSelect={setPdfFile}
+                        onClear={() => setPdfFile(null)}
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {catalogPrefs.enableARPreview && (
+                      <Button
+                        onClick={() => {
+                          navigate('/ar-viewer', { state: { part } });
+                          onClose();
+                        }}
+                        className="flex-1"
+                        disabled={!modelAsset && !modelLoading}
+                      >
+                        <Eye className="w-4 h-4" />
+                        View in AR
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      className={catalogPrefs.enableARPreview ? 'flex-1' : 'w-full'}
+                      onClick={() => {
+                        if (currentStlFile) {
+                          partsApi.downloadFile(currentStlFile.id, currentStlFile.originalName);
+                        }
+                      }}
+                      disabled={!currentStlFile}
+                    >
+                      <Download className="w-4 h-4" />
+                      Download STL
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (currentStepFile) partsApi.downloadFile(currentStepFile.id, currentStepFile.originalName);
+                      }}
+                      disabled={!currentStepFile}
+                    >
+                      <Download className="w-4 h-4" />
+                      STEP File
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (currentPdfFile) partsApi.downloadFile(currentPdfFile.id, currentPdfFile.originalName);
+                      }}
+                      disabled={!currentPdfFile}
+                    >
+                      <Download className="w-4 h-4" />
+                      PDF Datasheet
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      <Share2 className="w-4 h-4" />
+                      Share Part
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      <Star className="w-4 h-4" />
+                      Add to Favorites
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="space-y-6">
@@ -346,7 +607,7 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
                     </Button>
                   ) : (
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setIsEditing(false)} disabled={isSaving}>
+                      <Button size="sm" variant="outline" onClick={handleCancelEdit} disabled={isSaving}>
                         Cancel
                       </Button>
                       <Button size="sm" onClick={handleSave} disabled={isSaving}>
@@ -605,6 +866,65 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface FileReuploadFieldProps {
+  id: string;
+  label: string;
+  currentName?: string;
+  pendingFile: File | null;
+  accept: string;
+  onSelect: (file: File | null) => void;
+  onClear: () => void;
+}
+
+function FileReuploadField({
+  id,
+  label,
+  currentName,
+  pendingFile,
+  accept,
+  onSelect,
+  onClear,
+}: FileReuploadFieldProps) {
+  const displayName = pendingFile?.name ?? currentName ?? 'No file attached';
+
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-xs font-medium text-foreground">
+        {label}
+      </label>
+      <p className="text-xs text-muted-foreground truncate" title={displayName}>
+        Current: {displayName}
+        {pendingFile && (
+          <span className="text-primary ml-1">→ will replace on save</span>
+        )}
+      </p>
+      <div className="flex items-center gap-2">
+        <label
+          htmlFor={id}
+          className="flex-1 flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border hover:border-primary/50 cursor-pointer transition-colors bg-background text-sm"
+        >
+          <Upload className="w-4 h-4 text-muted-foreground shrink-0" />
+          <span className="text-muted-foreground truncate">
+            {pendingFile ? pendingFile.name : 'Choose file to upload'}
+          </span>
+          <input
+            id={id}
+            type="file"
+            accept={accept}
+            className="hidden"
+            onChange={(e) => onSelect(e.target.files?.[0] ?? null)}
+          />
+        </label>
+        {pendingFile && (
+          <Button type="button" variant="outline" size="sm" onClick={onClear}>
+            Clear
+          </Button>
+        )}
       </div>
     </div>
   );
