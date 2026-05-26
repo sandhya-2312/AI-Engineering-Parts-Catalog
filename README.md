@@ -61,7 +61,7 @@ You will be prompted to change the password on first login. Set `VITE_API_URL=/a
 
 | Service | URL |
 |---------|-----|
-| Frontend (Vercel) | `https://ai-engineering-parts-catalog-b9sk.vercel.app` |
+| Frontend (Vercel) | `https://ai-engineering-parts-catalog-hgsi.vercel.app` |
 | Backend (Render) | `https://ai-engineering-parts-catalog-api.onrender.com/api` |
 
 Production builds call the Render API automatically. To override, set `VITE_API_URL` in the Vercel project **Environment Variables**.
