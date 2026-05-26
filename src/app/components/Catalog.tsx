@@ -11,6 +11,7 @@ import type { CatalogViewMode } from '../lib/catalogSettings';
 import { useAuth, isApiError } from '../context/AuthContext';
 import { catalogApi } from '../lib/api/catalog';
 import { partsApi } from '../lib/api/parts';
+import { API_URL } from '../lib/api/config';
 import { getStoredToken } from '../lib/api/client';
 
 const MANUAL_OPTION = '__manual__';
@@ -22,11 +23,10 @@ function isLikelyImageThumbnail(value: string) {
 
 function resolveThumbnailUrl(value: string) {
   if (/^(https?:|data:image\/|blob:)/i.test(value)) return value;
-  const rawApiBase = import.meta.env.VITE_API_URL ?? '/api';
   if (value.startsWith('/files/')) {
-    return `${rawApiBase}${value}`;
+    return `${API_URL}${value}`;
   }
-  const apiBase = rawApiBase.endsWith('/api') ? rawApiBase.slice(0, -4) : rawApiBase;
+  const apiBase = API_URL.endsWith('/api') ? API_URL.slice(0, -4) : API_URL;
   const normalizedPath = value.startsWith('/') ? value : `/${value}`;
   return `${apiBase}${normalizedPath}`;
 }

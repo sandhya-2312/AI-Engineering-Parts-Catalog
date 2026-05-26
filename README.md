@@ -57,6 +57,17 @@ Authentication uses the **NestJS API** (`AI Engineering Parts Catalog-api`). Sta
 
 You will be prompted to change the password on first login. Set `VITE_API_URL=/api` in `.env` (see `.env.example`); Vite proxies `/api` to `http://localhost:3000` in development.
 
+## Production (Vercel + Render)
+
+| Service | URL |
+|---------|-----|
+| Frontend (Vercel) | `https://ai-engineering-parts-catalog-b9sk.vercel.app` |
+| Backend (Render) | `https://ai-engineering-parts-catalog-api.onrender.com/api` |
+
+Production builds call the Render API automatically. To override, set `VITE_API_URL` in the Vercel project **Environment Variables**.
+
+On **Render**, set `FRONTEND_URL` or `CORS_ORIGINS` to your Vercel URL (see API `.env.example`). Preview deployments on `*.vercel.app` are allowed when `CORS_ALLOW_VERCEL=true`.
+
 ## Routes
 
 | Path | Page |
