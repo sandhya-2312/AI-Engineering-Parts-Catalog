@@ -118,21 +118,8 @@ function countRecentlyAddedFromParts(parts: ApiPart[]): RecentlyAddedByPeriod {
   return counts;
 }
 
-async function loadPartsByCategoryFallback(totalParts: number): Promise<DashboardCategoryPoint[]> {
-  if (totalParts <= 0) return [];
-  try {
-    const { data } = await catalogApi.listParts({
-      page: 1,
-      limit: Math.min(Math.max(totalParts, 1), 500),
-    });
-    return aggregatePartsByCategory(data);
-  } catch {
-    return [];
-  }
-}
-
 function normalizeDashboardResponse(raw: RawDashboardResponse): DashboardResponse {
-  const stats = raw.stats ?? {};
+  const stats: Partial<DashboardStats> = raw.stats ?? {};
   const chartData = Array.isArray(raw.chartData) ? raw.chartData : [];
   const partsByCategory = Array.isArray(raw.partsByCategory) ? raw.partsByCategory : [];
   const recentActivity = Array.isArray(raw.recentActivity) ? raw.recentActivity : [];
