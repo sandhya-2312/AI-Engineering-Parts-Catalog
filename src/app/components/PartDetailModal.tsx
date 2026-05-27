@@ -46,7 +46,8 @@ interface PartDetailModalProps {
 const MANUAL_OPTION = '__manual__';
 
 function isLikelyImageThumbnail(value: string) {
-  return /^(https?:|data:image\/|blob:|\/|\.\/)/i.test(value)
+  if (value.startsWith('/files/')) return true;
+  return /^(https?:|data:image\/|blob:)/i.test(value)
     || /\.(png|jpe?g|gif|webp|svg)$/i.test(value);
 }
 
@@ -409,7 +410,9 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
                   ) : (
                     <div className="text-center px-6 space-y-2">
                       <p className="text-sm text-muted-foreground">No 3D model (GLB / STL) attached</p>
-                      <div className="text-6xl">{part.thumbnail}</div>
+                      <div className="text-6xl">
+                        {part.thumbnail.startsWith('/files/') ? '📦' : part.thumbnail}
+                      </div>
                     </div>
                   )}
                 </div>

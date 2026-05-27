@@ -17,7 +17,8 @@ import { getStoredToken } from '../lib/api/client';
 const MANUAL_OPTION = '__manual__';
 
 function isLikelyImageThumbnail(value: string) {
-  return /^(https?:|data:image\/|blob:|\/|\.\/)/i.test(value)
+  if (value.startsWith('/files/')) return true;
+  return /^(https?:|data:image\/|blob:)/i.test(value)
     || /\.(png|jpe?g|gif|webp|svg)$/i.test(value);
 }
 

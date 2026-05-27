@@ -1,4 +1,5 @@
 import { authApi } from './api/auth';
+import { apiOrigin } from './api/config';
 
 export const SETTINGS_STORAGE_KEY = 'engineerx.settings.v1';
 export const PROFILE_UPDATED_EVENT = 'engineerx.profile-updated';
@@ -42,10 +43,12 @@ export function resolvePhotoSrc(photoUrl: string): string {
   if (
     photoUrl.startsWith('http://') ||
     photoUrl.startsWith('https://') ||
-    photoUrl.startsWith('data:') ||
-    photoUrl.startsWith('/api/')
+    photoUrl.startsWith('data:')
   ) {
     return photoUrl;
+  }
+  if (photoUrl.startsWith('/api/') || photoUrl.startsWith('/files/')) {
+    return `${apiOrigin()}${photoUrl}`;
   }
   return photoUrl;
 }
