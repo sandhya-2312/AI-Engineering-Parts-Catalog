@@ -79,6 +79,8 @@ export default function ARViewer() {
         } else {
           previousUrl = asset.url;
           setModelAsset(asset);
+          setIsPlaced(false);
+          setPlaceRequestId(0);
         }
       } catch {
         if (active) setLoadError('Failed to load the 3D model.');
@@ -94,6 +96,15 @@ export default function ARViewer() {
       if (previousUrl) URL.revokeObjectURL(previousUrl);
     };
   }, [state?.part, queryPartId]);
+
+  // Desktop / browsers without WebXR: show the model on the virtual floor automatically.
+  useEffect(() => {
+    if (!modelAsset || loading || isPlaced || loadError || arMode !== 'preview') return;
+    const timer = window.setTimeout(() => {
+      setPlaceRequestId((id) => id + 1);
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [modelAsset, loading, isPlaced, loadError, arMode]);
 
   const handlePlace = () => {
     if (!modelAsset) return;
@@ -112,7 +123,9 @@ export default function ARViewer() {
           format={modelAsset.format}
           placed={isPlaced}
           placeRequestId={placeRequestId}
+          placementMode={arMode}
           onPlaced={() => setIsPlaced(true)}
+          onModelError={() => setLoadError('Failed to render the 3D model in AR.')}
           scale={modelScale}
           rotationY={modelRotation}
           onModeChange={setArMode}

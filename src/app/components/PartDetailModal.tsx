@@ -535,7 +535,9 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
                     {catalogPrefs.enableARPreview && (
                       <Button
                         onClick={() => {
-                          navigate('/ar-viewer', { state: { part } });
+                          navigate(`/ar-viewer?partId=${encodeURIComponent(part.id)}`, {
+                            state: { part },
+                          });
                           onClose();
                         }}
                         className="flex-1"

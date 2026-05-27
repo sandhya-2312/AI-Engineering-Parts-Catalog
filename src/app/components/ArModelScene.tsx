@@ -14,7 +14,9 @@ interface ArModelSceneProps {
   format: PartModelFormat;
   placed: boolean;
   placeRequestId: number;
+  placementMode: 'ar' | 'preview';
   onPlaced: () => void;
+  onModelError?: () => void;
   scale: number;
   rotationY: number;
   onModeChange?: (mode: 'ar' | 'preview') => void;
@@ -28,7 +30,9 @@ export default function ArModelScene({
   format,
   placed,
   placeRequestId,
+  placementMode,
   onPlaced,
+  onModelError,
   scale,
   rotationY,
   onModeChange,
@@ -40,10 +44,12 @@ export default function ArModelScene({
   const controlsRef = useRef<OrbitControls | null>(null);
   const baseScaleRef = useRef(1);
   const onPlacedRef = useRef(onPlaced);
+  const onModelErrorRef = useRef(onModelError);
   const onModeChangeRef = useRef(onModeChange);
   const onSessionChangeRef = useRef(onSessionChange);
   const placeOnFloorRef = useRef<() => void>(() => {});
   onPlacedRef.current = onPlaced;
+  onModelErrorRef.current = onModelError;
   onModeChangeRef.current = onModeChange;
   onSessionChangeRef.current = onSessionChange;
 
@@ -213,7 +219,10 @@ export default function ArModelScene({
         scene.add(object);
       })
       .catch(() => {
-        if (!disposed) container.dataset.error = 'true';
+        if (!disposed) {
+          container.dataset.error = 'true';
+          onModelErrorRef.current?.();
+        }
       });
 
     renderer.setAnimationLoop((_time, frame) => {
@@ -256,16 +265,18 @@ export default function ArModelScene({
   useEffect(() => {
     if (placeRequestId <= 0 || placed) return;
 
-    const arBtn = containerRef.current?.querySelector('button');
     const inXr = rendererInSession();
 
-    if (arBtn instanceof HTMLButtonElement && !inXr) {
-      arBtn.click();
-      return;
+    if (placementMode === 'ar' && !inXr) {
+      const arBtn = containerRef.current?.querySelector('button');
+      if (arBtn instanceof HTMLButtonElement) {
+        arBtn.click();
+        return;
+      }
     }
 
     placeOnFloorRef.current();
-  }, [placeRequestId, placed]);
+  }, [placeRequestId, placed, placementMode]);
 
   useEffect(() => {
     const model = modelRef.current;
