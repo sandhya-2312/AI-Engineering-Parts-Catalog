@@ -34,7 +34,7 @@ import type { LookupEntity } from '../lib/api/types';
 import { availabilityToApi, mapApiPartToPart } from '../lib/mapPart';
 import { useCatalogSettings } from '../hooks/useCatalogSettings';
 import PartModelViewer, { type PartModelViewerControls } from './PartModelViewer';
-import { loadPartModelAsset, type PartModelAsset } from '../lib/partModel';
+import { loadPartModelAsset, thumbnailFileId, type PartModelAsset } from '../lib/partModel';
 import { resolveApiFileUrl } from '../lib/resolveFileUrl';
 
 interface PartDetailModalProps {
@@ -84,6 +84,7 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
   const [relatedParts, setRelatedParts] = useState<Part[]>([]);
   const [modelAsset, setModelAsset] = useState<PartModelAsset | null>(null);
   const [modelLoading, setModelLoading] = useState(false);
+  const [modelLoadError, setModelLoadError] = useState('');
   const [existingFiles, setExistingFiles] = useState<ApiPartFile[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [partImage, setPartImage] = useState<File | null>(null);
@@ -92,7 +93,9 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
   const [stepFile, setStepFile] = useState<File | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const viewerControlsRef = useRef<PartModelViewerControls | null>(null);
-  const canRenderImage = isLikelyImageThumbnail(part.thumbnail) && !imageFailed;
+  const [thumbnailAvailable, setThumbnailAvailable] = useState(true);
+  const canRenderImage =
+    isLikelyImageThumbnail(part.thumbnail) && !imageFailed && thumbnailAvailable;
   const isProtectedApiFile = part.thumbnail.startsWith('/files/');
 
   useEffect(() => {
@@ -139,12 +142,18 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
     setModelAsset(null);
     setModelLoading(true);
 
+    setModelLoadError('');
     loadPartModelAsset(part.id)
-      .then((asset) => {
-        if (isActive) setModelAsset(asset);
+      .then((result) => {
+        if (!isActive) return;
+        setModelAsset(result.asset);
+        setModelLoadError(result.error ?? '');
       })
       .catch(() => {
-        if (isActive) setModelAsset(null);
+        if (isActive) {
+          setModelAsset(null);
+          setModelLoadError('Failed to load the 3D preview.');
+        }
       })
       .finally(() => {
         if (isActive) setModelLoading(false);
@@ -212,11 +221,20 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
 
   useEffect(() => {
     let active = true;
+    setThumbnailAvailable(true);
     setFilesLoading(true);
     partsApi
       .listFiles(part.id)
       .then((files) => {
-        if (active) setExistingFiles(files);
+        if (!active) return;
+        setExistingFiles(files);
+        const thumbId = thumbnailFileId(part.thumbnail);
+        if (thumbId) {
+          const thumbFile = files.find((f) => f.id === thumbId);
+          if (thumbFile && thumbFile.available === false) {
+            setThumbnailAvailable(false);
+          }
+        }
       })
       .catch(() => {
         if (active) setExistingFiles([]);
@@ -253,10 +271,12 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
     if (modelAsset?.url) URL.revokeObjectURL(modelAsset.url);
     setModelLoading(true);
     try {
-      const asset = await loadPartModelAsset(part.id);
-      setModelAsset(asset);
+      const result = await loadPartModelAsset(part.id);
+      setModelAsset(result.asset);
+      setModelLoadError(result.error ?? '');
     } catch {
       setModelAsset(null);
+      setModelLoadError('Failed to load the 3D preview.');
     } finally {
       setModelLoading(false);
     }
@@ -408,8 +428,15 @@ export default function PartDetailModal({ part, onClose, onPartUpdated }: PartDe
                       onError={() => setImageFailed(true)}
                     />
                   ) : (
-                    <div className="text-center px-6 space-y-2">
-                      <p className="text-sm text-muted-foreground">No 3D model (GLB / STL) attached</p>
+                    <div className="text-center px-6 space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        {modelLoadError || 'No 3D model (GLB / STL) attached'}
+                      </p>
+                      {modelLoadError && !isEditing && (
+                        <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
+                          Edit & re-upload GLB
+                        </Button>
+                      )}
                       <div className="text-6xl">
                         {part.thumbnail.startsWith('/files/') ? '📦' : part.thumbnail}
                       </div>

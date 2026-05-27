@@ -63,6 +63,8 @@ export interface ApiPartFile {
   mimeType: string;
   sizeBytes: number;
   createdAt?: string;
+  /** False when the DB has metadata but no file bytes (re-upload required). */
+  available?: boolean;
 }
 
 export interface PaginatedParts {

@@ -69,16 +69,18 @@ export default function ARViewer() {
         }
 
         setPart(resolvedPart);
-        const asset = await loadPartModelAsset(resolvedPart.id);
+        const result = await loadPartModelAsset(resolvedPart.id);
         if (!active) return;
 
         if (previousUrl) URL.revokeObjectURL(previousUrl);
-        if (!asset) {
+        if (!result.asset) {
           setModelAsset(null);
-          setLoadError('This part has no GLB or STL file for AR preview.');
+          setLoadError(
+            result.error ?? 'This part has no GLB or STL file for AR preview.',
+          );
         } else {
-          previousUrl = asset.url;
-          setModelAsset(asset);
+          previousUrl = result.asset.url;
+          setModelAsset(result.asset);
           setIsPlaced(false);
           setPlaceRequestId(0);
         }
